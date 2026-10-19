@@ -1,6 +1,6 @@
 export type Interval = { start: string; end: string };
 export type Qualification = { code: string; status: 'verified' | 'unverified'; validUntil: string };
-export type Employee = { id: string; qualifications: Qualification[]; unavailable: Interval[] };
+export type Employee = { id: string; qualifications: Qualification[]; unavailable: Interval[]; maxJobsPerDay?: number };
 export type Equipment = { id: string; type: string; maintenance: Interval[] };
 export type Job = { id: string; status: 'pending' | 'ready' | 'cancelled'; requiredQualifications: string[]; requiredEquipmentTypes: string[]; requiredDocumentNames: string[]; documentNames: string[] };
 export type Assignment = { id: string; jobId: string; employeeIds: string[]; equipmentIds: string[]; window: Interval; state: 'proposed' | 'confirmed' | 'cancelled' };
@@ -25,6 +25,11 @@ export function validateAssignment(a: Assignment, data: SchedulingData): Finding
   for (const id of a.employeeIds) {
     const e = data.employees.find(x => x.id === id);
     if (!e) { add('UNKNOWN_EMPLOYEE', 'blocker', id); continue; }
+    if (e.maxJobsPerDay !== undefined) {
+      const dayKey = a.window.start.slice(0, 10);
+      const sameDay = data.assignments.filter(x => x.id !== a.id && x.state === 'confirmed' && x.employeeIds.includes(id) && x.window.start.slice(0, 10) === dayKey);
+      if (sameDay.length >= e.maxJobsPerDay) add('DAILY_JOB_LIMIT', 'blocker', id + ': maximum ' + e.maxJobsPerDay + ' jobs per day');
+    }
     if (e.unavailable.some(w => overlaps(w, a.window))) add('EMPLOYEE_UNAVAILABLE', 'blocker', id);
     for (const code of job.requiredQualifications) {
       const q = e.qualifications.find(x => x.code === code);
