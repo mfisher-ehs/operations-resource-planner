@@ -12,6 +12,7 @@ const jobs: DemoJob[] = [
   { id:'JOB-1045', title:'Materials pickup', client:'Summit Operations', location:'South Terminal', time:'10:00–13:00', duration:'3h', category:'Transport', status:'pending', accent:'pink' },
   { id:'JOB-1046', title:'Facility walkthrough', client:'Harborline Group', location:'North Site', time:'08:00–12:00', duration:'4h', category:'Inspection', status:'ready', accent:'cyan' }
 ];
+type DriverMessage = { id: string; driverId: string; jobId: string; body: string; sentAt: string; acknowledged: boolean };
 type Booking = { id: string; employeeId: string; jobId: string; day: number; start: number; end: number; equipmentId: string };
 const initial: Booking[] = [
   {id:'A1',employeeId:'E1',jobId:'JOB-1042',day:0,start:8,end:11,equipmentId:'V1'},
@@ -31,6 +32,11 @@ function model(bookings: Booking[]): SchedulingData {
 }
 export default function Dashboard() {
   const [bookings,setBookings] = useState<Booking[]>(initial);
+  const [messages,setMessages] = useState<DriverMessage[]>([]);
+  const [recipient,setRecipient] = useState('E1');
+  const [messageJob,setMessageJob] = useState('JOB-1042');
+  const [messageBody,setMessageBody] = useState('');
+  const [driverView,setDriverView] = useState(false);
   const [selectedJob,setSelectedJob] = useState(jobs[3]!.id);
   const [employeeId,setEmployeeId] = useState('E1');
   const [day,setDay] = useState(4);
@@ -49,12 +55,20 @@ export default function Dashboard() {
     setBookings(prev=>[...prev,{...candidate,id:'A'+(Date.now())}]);
     setNotice('Assignment confirmed for '+selected.title+'.');
   }
-  function reset(){setBookings(initial);setSelectedJob('JOB-1045');setNotice('Demo schedule restored.');}
+  function sendMessage() {
+    const body=messageBody.trim();
+    if(!body){setNotice('Enter an update before sending.');return;}
+    if(!bookings.some(b=>b.employeeId===recipient && b.jobId===messageJob)){setNotice('Select a job assigned to this driver.');return;}
+    setMessages(prev=>[{id:'MSG-'+(prev.length+1),driverId:recipient,jobId:messageJob,body,sentAt:new Date().toLocaleString(),acknowledged:false},...prev]);
+    setMessageBody('');
+    setNotice('Demo update sent to '+employees.find(e=>e.id===recipient)?.name+'. No real SMS was sent.');
+  }
+  function reset(){setBookings(initial);setSelectedJob('JOB-1045');setMessages([]);setMessageBody('');setNotice('Demo schedule restored.');}
   return <div className="shell">
     <aside className="sidebar">
       <div className="brand"><span className="brand-icon">◈</span><div><strong>OPERATIONS</strong><small>RESOURCE PLANNER</small></div></div>
       <div className="nav-label">WORKSPACE</div>
-      <nav><a className="active">▦ <span>Schedule Board</span></a><a href="#queue">◫ <span>Job Queue</span></a><a href="#resources">♧ <span>Resources</span></a><a href="#activity">◷ <span>Activity</span></a></nav>
+      <nav><a className="active">▦ <span>Schedule Board</span></a><a href="#queue">◫ <span>Job Queue</span></a><a href="#resources">♧ <span>Resources</span></a><a href="#activity">◷ <span>Activity</span></a><a href="#messages">✉ <span>Driver updates</span></a></nav>
       <div className="side-bottom"><span className="live-dot"/> DEMO WORKSPACE <p>Fictional records · Local preview</p></div>
     </aside>
     <main className="main">
@@ -90,6 +104,28 @@ export default function Dashboard() {
             {notice&&<div className="notice" role="status">{notice}</div>}
           </section>
         </div>
+        <section className="panel" id="messages" style={{marginTop:18}}>
+          <div className="section-head"><div><div className="eyebrow">INDIVIDUAL DRIVER COMMUNICATION</div><h2>Driver updates</h2></div><span className="micro">SIMULATED DELIVERY · NO SMS</span></div>
+          <p className="form-description">Send an assignment-specific update to one driver. Open the phone preview to acknowledge it as that driver.</p>
+          <div className="form-grid">
+            <label>Recipient<select value={recipient} onChange={e=>{const id=e.target.value;setRecipient(id);setMessageJob(bookings.find(b=>b.employeeId===id)?.jobId||'');}}>{employees.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}</select></label>
+            <label>Assigned job<select value={messageJob} onChange={e=>setMessageJob(e.target.value)}>{bookings.filter(b=>b.employeeId===recipient).map(b=>{const j=jobs.find(x=>x.id===b.jobId)!;return <option key={b.id} value={j.id}>{j.id} — {j.title}</option>})}</select></label>
+          </div>
+          <label style={{display:'block',marginTop:12}}>Update for this driver<textarea style={{display:'block',width:'100%',minHeight:90,marginTop:8,background:'#0c1a2e',color:'#e9f0ff',border:'1px solid #30445c',borderRadius:6,padding:12}} value={messageBody} onChange={e=>setMessageBody(e.target.value)} placeholder="Example: Pickup gate changed to entrance B. Call dispatch on arrival." /></label>
+          <div style={{display:'flex',gap:12,flexWrap:'wrap',marginTop:12}}>
+            <button className="primary" style={{maxWidth:270}} onClick={sendMessage}>Send individual update →</button>
+            <button className="outline" onClick={()=>setDriverView(v=>!v)}>{driverView?'Hide':'Show'} driver phone preview</button>
+          </div>
+          {driverView&&<div style={{maxWidth:370,marginTop:20,padding:16,border:'2px solid #536779',borderRadius:24,background:'#101b29'}}>
+            <div className="eyebrow">DRIVER PHONE · {employees.find(e=>e.id===recipient)?.name}</div>
+            <h2>My updates</h2>
+            {messages.filter(m=>m.driverId===recipient).length===0?<p>No updates for this driver.</p>:messages.filter(m=>m.driverId===recipient).map(m=>{const j=jobs.find(x=>x.id===m.jobId);return <article key={m.id} style={{padding:12,marginTop:12,border:'1px solid #40566c',borderRadius:8}}>
+              <strong>{j?.client} · {j?.title}</strong><p>{j?.location}</p><p>{m.body}</p><small>{m.sentAt} · {m.acknowledged?'Acknowledged':'Awaiting acknowledgment'}</small>
+              {!m.acknowledged&&<button className="outline" style={{display:'block',marginTop:10}} onClick={()=>setMessages(prev=>prev.map(x=>x.id===m.id?{...x,acknowledged:true}:x))}>✓ Received</button>}
+            </article>})}
+          </div>}
+          <div style={{marginTop:18}}><div className="eyebrow">MESSAGE HISTORY</div>{messages.length===0?<p className="form-description">No updates sent yet.</p>:messages.map(m=><div key={m.id} style={{padding:'12px 0',borderBottom:'1px solid #27384b'}}><strong>{employees.find(e=>e.id===m.driverId)?.name}</strong> · {m.jobId} · {m.acknowledged?'✓ Acknowledged':'◷ Awaiting acknowledgment'}<p style={{margin:'6px 0'}}>{m.body}</p><small>{m.sentAt}</small></div>)}</div>
+        </section>
         <footer>OPERATIONS RESOURCE PLANNER <span>·</span> SYNTHETIC DATA ONLY <span>·</span> PORTFOLIO PROTOTYPE v0.2</footer>
       </div>
     </main>
